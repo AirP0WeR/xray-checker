@@ -1,6 +1,7 @@
 package subscription
 
 import (
+	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -485,19 +486,20 @@ func (p *Parser) fetchURLContent(source string) (*fetchResult, error) {
 		return nil, err
 	}
 
-	if config.CLIConfig.Subscription.UserAgent != "" {
+	switch {
+	case config.CLIConfig.Subscription.UserAgent != "":
 		req.Header.Set("User-Agent", config.CLIConfig.Subscription.UserAgent)
-	} else {
+	case config.CLIConfig.Subscription.JSONFormat:
+		req.Header.Set("User-Agent", "Happ/1.0 (android)")
+		req.Header.Set("X-Hwid", generateDeviceID())
+	default:
 		req.Header.Set("User-Agent", "Xray-Checker")
-	}
-	req.Header.Set("Accept", "*/*")
-
-	if config.CLIConfig.Subscription.UserAgent == "" {
 		req.Header.Set("X-Device-OS", "CheckerOS")
 		req.Header.Set("X-Ver-OS", config.Version)
 		req.Header.Set("X-Device-Model", "Xray-Checker Pro Max")
 		req.Header.Set("X-Hwid", "0JLQq9Ca0JvQrtCn0Jgg0JHQm9Cp0KLQrCBIV0lE")
 	}
+	req.Header.Set("Accept", "*/*")
 
 	for _, h := range config.CLIConfig.Subscription.Headers {
 		parts := strings.SplitN(h, ":", 2)
@@ -1013,4 +1015,10 @@ func (p *Parser) parseSingleConfigFile(data []byte, startIndex int) ([]*models.P
 	}
 
 	return nil, fmt.Errorf("unsupported config format")
+}
+
+func generateDeviceID() string {
+	b := make([]byte, 16)
+	rand.Read(b)
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }
