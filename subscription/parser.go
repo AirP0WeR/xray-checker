@@ -370,18 +370,29 @@ func (p *Parser) parseJSONConfigs(data []byte) ([]*models.ProxyConfig, error) {
 	configIndex := 0
 
 	for _, config := range configs {
+		var groupConfigs []*models.ProxyConfig
 		for _, outboundRaw := range config.Outbounds {
-			proxyConfig, err := p.convertOutbound(outboundRaw, configIndex, nil)
+			proxyConfig, err := p.convertOutbound(outboundRaw, configIndex+len(groupConfigs), nil)
 			if err != nil {
 				continue
 			}
 			if proxyConfig != nil {
-				if config.Remarks != "" {
-					proxyConfig.Name = config.Remarks
-				}
-				proxyConfigs = append(proxyConfigs, proxyConfig)
-				configIndex++
+				groupConfigs = append(groupConfigs, proxyConfig)
 			}
+		}
+		if config.Remarks != "" {
+			for _, pc := range groupConfigs {
+				if len(groupConfigs) > 1 {
+					pc.Name = fmt.Sprintf("%s | %s", config.Remarks, pc.Server)
+				} else {
+					pc.Name = config.Remarks
+				}
+			}
+		}
+		for _, pc := range groupConfigs {
+			pc.Index = configIndex
+			proxyConfigs = append(proxyConfigs, pc)
+			configIndex++
 		}
 	}
 
@@ -413,9 +424,6 @@ func (p *Parser) parseSingleJSONConfig(data []byte) ([]*models.ProxyConfig, erro
 			continue
 		}
 		if proxyConfig != nil {
-			if config.Remarks != "" {
-				proxyConfig.Name = config.Remarks
-			}
 			proxyConfigs = append(proxyConfigs, proxyConfig)
 			configIndex++
 		}
@@ -423,6 +431,16 @@ func (p *Parser) parseSingleJSONConfig(data []byte) ([]*models.ProxyConfig, erro
 
 	if len(proxyConfigs) == 0 {
 		return nil, fmt.Errorf("no valid proxy configurations found in single JSON config")
+	}
+
+	if config.Remarks != "" {
+		for _, pc := range proxyConfigs {
+			if len(proxyConfigs) > 1 {
+				pc.Name = fmt.Sprintf("%s | %s", config.Remarks, pc.Server)
+			} else {
+				pc.Name = config.Remarks
+			}
+		}
 	}
 
 	return proxyConfigs, nil
@@ -466,12 +484,27 @@ func (p *Parser) fetchURLContent(source string) (*fetchResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "Xray-Checker")
+
+	if config.CLIConfig.Subscription.UserAgent != "" {
+		req.Header.Set("User-Agent", config.CLIConfig.Subscription.UserAgent)
+	} else {
+		req.Header.Set("User-Agent", "Xray-Checker")
+	}
 	req.Header.Set("Accept", "*/*")
-	req.Header.Set("X-Device-OS", "CheckerOS")
-	req.Header.Set("X-Ver-OS", config.Version)
-	req.Header.Set("X-Device-Model", "Xray-Checker Pro Max")
-	req.Header.Set("X-Hwid", "0JLQq9Ca0JvQrtCn0Jgg0JHQm9Cp0KLQrCBIV0lE")
+
+	if config.CLIConfig.Subscription.UserAgent == "" {
+		req.Header.Set("X-Device-OS", "CheckerOS")
+		req.Header.Set("X-Ver-OS", config.Version)
+		req.Header.Set("X-Device-Model", "Xray-Checker Pro Max")
+		req.Header.Set("X-Hwid", "0JLQq9Ca0JvQrtCn0Jgg0JHQm9Cp0KLQrCBIV0lE")
+	}
+
+	for _, h := range config.CLIConfig.Subscription.Headers {
+		parts := strings.SplitN(h, ":", 2)
+		if len(parts) == 2 {
+			req.Header.Set(strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]))
+		}
+	}
 
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
@@ -959,10 +992,16 @@ func (p *Parser) parseSingleConfigFile(data []byte, startIndex int) ([]*models.P
 				continue
 			}
 			if proxyConfig != nil {
-				if config.Remarks != "" {
-					proxyConfig.Name = config.Remarks
-				}
 				proxyConfigs = append(proxyConfigs, proxyConfig)
+			}
+		}
+		if config.Remarks != "" {
+			for _, pc := range proxyConfigs {
+				if len(proxyConfigs) > 1 {
+					pc.Name = fmt.Sprintf("%s | %s", config.Remarks, pc.Server)
+				} else {
+					pc.Name = config.Remarks
+				}
 			}
 		}
 
